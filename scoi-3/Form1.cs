@@ -11,6 +11,8 @@ namespace scoi_3
         Bitmap originalImage;
         NumericUpDown numericT;
         Label labelT;
+        NumericUpDown numericWindowSize;
+        Label labelWindowSize;
         Panel topPanel;
 
         public Form1()
@@ -60,24 +62,42 @@ namespace scoi_3
             comboBoxMethod.SelectedIndex = 0;
             topPanel.Controls.Add(comboBoxMethod);
 
+            // Метка и NumericUpDown для параметра windowSize
+            labelWindowSize = new Label();
+            labelWindowSize.Text = "Параметр windowSize:";
+            labelWindowSize.Location = new Point(910, 20);
+            labelWindowSize.Size = new Size(200, 70);
+            labelWindowSize.TextAlign = ContentAlignment.MiddleRight;
+            topPanel.Controls.Add(labelWindowSize);
+
+            numericWindowSize = new NumericUpDown();
+            numericWindowSize.Location = new Point(1130, 30);
+            numericWindowSize.DecimalPlaces = 0;
+            numericWindowSize.Increment = 1M;
+            numericWindowSize.Minimum = 1;
+            numericWindowSize.Maximum = 30;
+            numericWindowSize.Value = 15M;
+            numericWindowSize.Size = new Size(100, 40);
+            topPanel.Controls.Add(numericWindowSize);
+
             // Метка и NumericUpDown для параметра k
             labelT = new Label();
             labelT.Text = "Параметр k:";
-            labelT.Location = new Point(910, 20);
+            labelT.Location = new Point(910, 100);
             labelT.Size = new Size(200, 70);
             labelT.TextAlign = ContentAlignment.MiddleRight;
             topPanel.Controls.Add(labelT);
 
             numericT = new NumericUpDown();
-            numericT.Location = new Point(1130, 30);
-            numericT.DecimalPlaces = 2;
+            numericT.Location = new Point(1130, 100);
+            numericT.DecimalPlaces = 4;
             numericT.Increment = 0.01M;
             numericT.Minimum = 0;
             numericT.Maximum = 1;
             numericT.Value = 0.15M;
             numericT.Size = new Size(100, 40);
             topPanel.Controls.Add(numericT);
-
+            
             // PictureBox для оригинального изображения
             pictureBoxOriginal = new PictureBox();
             pictureBoxOriginal.Location = new Point(20, 130);
@@ -112,44 +132,73 @@ namespace scoi_3
             string method = comboBoxMethod.SelectedItem.ToString();
             Bitmap gray = ToGrayscale(originalImage);
             double kValue = (double)numericT.Value;
+            int windowSizeVal = (int)numericWindowSize.Value;
 
             Bitmap result = method switch
             {
                 "Гаврилов" => BinarizeGavrilov(gray),
                 "Отсу" => BinarizeOtsu(gray),
-                "Ниблек" => BinarizeNiblack(gray, 15, kValue),        //-0.2  
-                "Саувола" => BinarizeSauvola(gray, 15, 0.5),        //0.5
-                "Уолф" => BinarizeWolf(gray, 15, kValue),          //0.5
-                "Бредли-Рот" => BinarizeBradley(gray, 15, kValue),
+                "Ниблек" => Niblack(gray, windowSizeVal, kValue),       
+                "Саувола" => BinarizeSauvola(gray, windowSizeVal, 0.5),        
+                "Уолф" => BinarizeWolf(gray, windowSizeVal, kValue),
+                "Бредли-Рот" => BinarizeBradley(gray, windowSizeVal, kValue),
                 _ => gray
             };
 
             pictureBoxResult.Image = result;
         }
 
-        private Bitmap ToGrayscale(Bitmap image)
+        private static Bitmap ToGrayscale(Bitmap source)
         {
-            Bitmap gray = new Bitmap(image.Width, image.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            var data = gray.LockBits(new Rectangle(0, 0, gray.Width, gray.Height), System.Drawing.Imaging.ImageLockMode.WriteOnly, gray.PixelFormat);
-            var bytesPerPixel = 3;
-            var stride = data.Stride;
+            int width = source.Width;
+            int height = source.Height;
+
+            Bitmap grayscaleBitmap = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+
+            BitmapData sourceData = source.LockBits(
+                new Rectangle(0, 0, width, height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb);
+
+            BitmapData grayData = grayscaleBitmap.LockBits(
+                new Rectangle(0, 0, width, height),
+                ImageLockMode.WriteOnly,
+                PixelFormat.Format24bppRgb);
+
+            int stride = sourceData.Stride;
+            IntPtr srcPtr = sourceData.Scan0;
+            IntPtr dstPtr = grayData.Scan0;
+            int bytes = Math.Abs(stride) * height;
+
             unsafe
             {
-                byte* ptr = (byte*)data.Scan0;
-                for (int y = 0; y < image.Height; y++)
+                byte* src = (byte*)srcPtr;
+                byte* dst = (byte*)dstPtr;
+
+                for (int y = 0; y < height; y++)
                 {
-                    for (int x = 0; x < image.Width; x++)
+                    byte* srcRow = src + y * stride;
+                    byte* dstRow = dst + y * stride;
+
+                    for (int x = 0; x < width * 3; x += 3)
                     {
-                        Color c = image.GetPixel(x, y);
-                        byte i = (byte)(0.2125 * c.R + 0.7154 * c.G + 0.0721 * c.B);
-                        ptr[y * stride + x * bytesPerPixel + 0] = i;
-                        ptr[y * stride + x * bytesPerPixel + 1] = i;
-                        ptr[y * stride + x * bytesPerPixel + 2] = i;
+                        byte b = srcRow[x];
+                        byte g = srcRow[x + 1];
+                        byte r = srcRow[x + 2];
+
+                        byte gray = (byte)((r * 0.3) + (g * 0.59) + (b * 0.11));
+
+                        dstRow[x] = gray;
+                        dstRow[x + 1] = gray;
+                        dstRow[x + 2] = gray;
                     }
                 }
             }
-            gray.UnlockBits(data);
-            return gray;
+
+            source.UnlockBits(sourceData);
+            grayscaleBitmap.UnlockBits(grayData);
+
+            return grayscaleBitmap;
         }
 
         public static Bitmap BinarizeGavrilov(Bitmap source)
@@ -213,41 +262,15 @@ namespace scoi_3
             return result;
         }
 
-        private Bitmap BinarizeOtsu(Bitmap source)
+        private Bitmap BinarizeOtsu(Bitmap gray)
         {
-            BitmapData data = source.LockBits(
-        new Rectangle(0, 0, source.Width, source.Height),
-        ImageLockMode.ReadOnly,
-        PixelFormat.Format24bppRgb
-            );
-
             int[] hist = new int[256];
-            int bytes = Math.Abs(data.Stride) * data.Height;
-            byte[] buffer = new byte[bytes];
-            Marshal.Copy(data.Scan0, buffer, 0, bytes);
-            source.UnlockBits(data);
+            int width = gray.Width;
+            int height = gray.Height;
 
-            // Параллельное построение гистограммы
-            Parallel.For(0, data.Height, y =>
-            {
-                int row = y * data.Stride;
-                int[] localHist = new int[256];
-
-                for (int x = 0; x < data.Width; x++)
-                {
-                    int pos = row + x * 3;
-                    byte r = buffer[pos + 2];
-                    localHist[r]++;
-                }
-
-                lock (hist)
-                {
-                    for (int i = 0; i < 256; i++)
-                        hist[i] += localHist[i];
-                }
-            });
-            int width = source.Width;
-            int height = source.Height;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                    hist[gray.GetPixel(x, y).R]++;
 
             int total = width * height;
             float sum = 0;
@@ -277,74 +300,57 @@ namespace scoi_3
                 }
             }
 
-            Bitmap result = new Bitmap(source.Width, source.Height);
-            BitmapData resultData = result.LockBits(
-                new Rectangle(0, 0, result.Width, result.Height),
-                ImageLockMode.WriteOnly,
-                PixelFormat.Format24bppRgb
-            );
-
-            unsafe
-            {
-                byte* ptr = (byte*)resultData.Scan0;
-                int stride = resultData.Stride;
-
-                Parallel.For(0, data.Height, y =>
+            Bitmap result = new Bitmap(width, height);
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
                 {
-                    byte* row = ptr + y * stride;
-                    int srcRow = y * data.Stride;
+                    int pixel = gray.GetPixel(x, y).R;
+                    result.SetPixel(x, y, pixel > threshold ? Color.White : Color.Black);
+                }
 
-                    for (int x = 0; x < data.Width; x++)
-                    {
-                        int srcPos = srcRow + x * 3;
-                        int dstPos = x * 3;
-                        byte value = buffer[srcPos + 2] > threshold ? (byte)255 : (byte)0;
-
-                        row[dstPos] = value;
-                        row[dstPos + 1] = value;
-                        row[dstPos + 2] = value;
-                    }
-                });
-            }
-
-            result.UnlockBits(resultData);
             return result;
         }
 
-        private Bitmap BinarizeNiblack(Bitmap gray, int windowSize, double k)
+        public static Bitmap Niblack(Bitmap source, int windowSize = 15, double k = -0.2)
         {
-            int width = gray.Width;
-            int height = gray.Height;
-            Bitmap result = new Bitmap(width, height);
-            int half = windowSize / 2;
+            int width = source.Width;
+            int height = source.Height;
 
-            var data = gray.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.ReadOnly, gray.PixelFormat);
-            var resultData = result.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.WriteOnly, result.PixelFormat);
+            Bitmap gray = ToGrayscale(source); // наш метод, см. выше
+            Bitmap result = new Bitmap(width, height, PixelFormat.Format24bppRgb);
 
-            int stride = data.Stride;
-            int bpp = 3;
+            BitmapData srcData = gray.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            BitmapData dstData = result.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+
+            int stride = srcData.Stride;
+            int radius = windowSize / 2;
 
             unsafe
             {
-                byte* src = (byte*)data.Scan0;
-                byte* dst = (byte*)resultData.Scan0;
+                byte* srcPtr = (byte*)srcData.Scan0;
+                byte* dstPtr = (byte*)dstData.Scan0;
 
                 for (int y = 0; y < height; y++)
                 {
                     for (int x = 0; x < width; x++)
                     {
-                        int x1 = Math.Max(0, x - half);
-                        int x2 = Math.Min(width - 1, x + half);
-                        int y1 = Math.Max(0, y - half);
-                        int y2 = Math.Min(height - 1, y + half);
-
-                        double sum = 0, sumSq = 0;
+                        // Считаем среднее и стандартное отклонение в окне
+                        double sum = 0;
+                        double sumSq = 0;
                         int count = 0;
-                        for (int j = y1; j <= y2; j++)
+
+                        for (int dy = -radius; dy <= radius; dy++)
                         {
-                            for (int i = x1; i <= x2; i++)
+                            int ny = y + dy;
+                            if (ny < 0 || ny >= height) continue;
+
+                            for (int dx = -radius; dx <= radius; dx++)
                             {
-                                byte val = src[j * stride + i * bpp];
+                                int nx = x + dx;
+                                if (nx < 0 || nx >= width) continue;
+
+                                byte* p = srcPtr + ny * stride + nx * 3;
+                                byte val = p[0]; // все каналы одинаковые после grayscale
                                 sum += val;
                                 sumSq += val * val;
                                 count++;
@@ -352,127 +358,159 @@ namespace scoi_3
                         }
 
                         double mean = sum / count;
-                        double std = Math.Sqrt((sumSq - sum * mean) / count);
-                        double threshold = mean + k * std;
-                        byte pixel = src[y * stride + x * bpp];
-                        byte bin = (pixel < threshold) ? (byte)0 : (byte)255;
-                        dst[y * stride + x * bpp + 0] = bin;
-                        dst[y * stride + x * bpp + 1] = bin;
-                        dst[y * stride + x * bpp + 2] = bin;
+                        double variance = (sumSq / count) - (mean * mean);
+                        double stdDev = Math.Sqrt(variance);
+                        double threshold = mean + k * stdDev;
+
+                        byte* dstPixel = dstPtr + y * stride + x * 3;
+                        byte pixelVal = (srcPtr + y * stride + x * 3)[0];
+
+                        byte resultVal = (byte)(pixelVal > threshold ? 255 : 0);
+                        dstPixel[0] = dstPixel[1] = dstPixel[2] = resultVal;
                     }
                 }
             }
 
-            gray.UnlockBits(data);
-            result.UnlockBits(resultData);
+            gray.UnlockBits(srcData);
+            result.UnlockBits(dstData);
+
             return result;
         }
 
-        private Bitmap BinarizeSauvola(Bitmap gray, int windowSize, double k)
+        private Bitmap Ensure24bpp(Bitmap input)
         {
+            return input.PixelFormat == PixelFormat.Format24bppRgb
+                ? input
+                : input.Clone(new Rectangle(0, 0, input.Width, input.Height), PixelFormat.Format24bppRgb);
+        }
+
+
+        private Bitmap BinarizeSauvola(Bitmap input, int windowSize, double k)
+        {
+            Bitmap gray = Ensure24bpp(input);
             int width = gray.Width;
             int height = gray.Height;
-            Bitmap result = new Bitmap(width, height);
             int half = windowSize / 2;
 
-            var data = gray.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.ReadOnly, gray.PixelFormat);
-            var resultData = result.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.WriteOnly, result.PixelFormat);
+            Bitmap result = new Bitmap(width, height, PixelFormat.Format24bppRgb);
 
-            int stride = data.Stride;
-            int bpp = 3;
+            var srcData = gray.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, gray.PixelFormat);
+            var dstData = result.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, result.PixelFormat);
+
+            int stride = srcData.Stride;
+            int bpp = Image.GetPixelFormatSize(gray.PixelFormat) / 8;
 
             unsafe
             {
-                byte* src = (byte*)data.Scan0;
-                byte* dst = (byte*)resultData.Scan0;
+                byte* src = (byte*)srcData.Scan0;
+                byte* dst = (byte*)dstData.Scan0;
 
                 for (int y = 0; y < height; y++)
                 {
                     for (int x = 0; x < width; x++)
                     {
-                        int x1 = Math.Max(0, x - half);
-                        int x2 = Math.Min(width - 1, x + half);
-                        int y1 = Math.Max(0, y - half);
-                        int y2 = Math.Min(height - 1, y + half);
-
                         double sum = 0, sumSq = 0;
                         int count = 0;
-                        for (int j = y1; j <= y2; j++)
+
+                        for (int j = -half; j <= half; j++)
                         {
-                            for (int i = x1; i <= x2; i++)
+                            int yy = y + j;
+                            if (yy < 0 || yy >= height) continue;
+
+                            for (int i = -half; i <= half; i++)
                             {
-                                byte val = src[j * stride + i * bpp];
-                                sum += val;
-                                sumSq += val * val;
+                                int xx = x + i;
+                                if (xx < 0 || xx >= width) continue;
+
+                                byte* p = src + yy * stride + xx * bpp;
+                                byte grayVal = p[0]; // используем только один канал
+
+                                sum += grayVal;
+                                sumSq += grayVal * grayVal;
                                 count++;
                             }
                         }
 
                         double mean = sum / count;
-                        double std = Math.Sqrt((sumSq - sum * mean) / count);
+                        double variance = (sumSq / count) - (mean * mean);
+                        double std = Math.Sqrt(Math.Max(variance, 0));
+
                         double threshold = mean * (1 + k * (std / 128 - 1));
-                        byte pixel = src[y * stride + x * bpp];
+
+                        byte* cur = src + y * stride + x * bpp;
+                        byte pixel = cur[0];
+
                         byte bin = (pixel < threshold) ? (byte)0 : (byte)255;
-                        dst[y * stride + x * bpp + 0] = bin;
-                        dst[y * stride + x * bpp + 1] = bin;
-                        dst[y * stride + x * bpp + 2] = bin;
+
+                        byte* outPixel = dst + y * stride + x * bpp;
+                        outPixel[0] = bin;
+                        outPixel[1] = bin;
+                        outPixel[2] = bin;
                     }
                 }
             }
 
-            gray.UnlockBits(data);
-            result.UnlockBits(resultData);
+            gray.UnlockBits(srcData);
+            result.UnlockBits(dstData);
             return result;
         }
 
-        private Bitmap BinarizeWolf(Bitmap gray, int windowSize, double k)
+
+        private Bitmap BinarizeWolf(Bitmap input, int windowSize, double k)
         {
+            Bitmap gray = Ensure24bpp(input);
             int width = gray.Width;
             int height = gray.Height;
-            Bitmap result = new Bitmap(width, height);
             int half = windowSize / 2;
 
-            var data = gray.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.ReadOnly, gray.PixelFormat);
-            var resultData = result.LockBits(new Rectangle(0, 0, width, height), System.Drawing.Imaging.ImageLockMode.WriteOnly, result.PixelFormat);
+            Bitmap result = new Bitmap(width, height, PixelFormat.Format24bppRgb);
 
-            int stride = data.Stride;
-            int bpp = 3;
-            double globalMin = 255;
-            double globalMaxStd = 0;
+            var srcData = gray.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, gray.PixelFormat);
+            var dstData = result.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, result.PixelFormat);
+
+            int stride = srcData.Stride;
+            int bpp = Image.GetPixelFormatSize(gray.PixelFormat) / 8;
 
             double[,] meanMap = new double[width, height];
             double[,] stdMap = new double[width, height];
+            double globalMin = 255;
+            double globalMaxStd = 0;
 
             unsafe
             {
-                byte* src = (byte*)data.Scan0;
-                byte* dst = (byte*)resultData.Scan0;
+                byte* src = (byte*)srcData.Scan0;
+                byte* dst = (byte*)dstData.Scan0;
 
-                // Первый проход: вычисление локальных средних и стандартных отклонений
+                // Первый проход — собираем статистику
                 for (int y = 0; y < height; y++)
                 {
                     for (int x = 0; x < width; x++)
                     {
-                        int x1 = Math.Max(0, x - half);
-                        int x2 = Math.Min(width - 1, x + half);
-                        int y1 = Math.Max(0, y - half);
-                        int y2 = Math.Min(height - 1, y + half);
-
                         double sum = 0, sumSq = 0;
                         int count = 0;
-                        for (int j = y1; j <= y2; j++)
+
+                        for (int j = -half; j <= half; j++)
                         {
-                            for (int i = x1; i <= x2; i++)
+                            int yy = y + j;
+                            if (yy < 0 || yy >= height) continue;
+
+                            for (int i = -half; i <= half; i++)
                             {
-                                byte val = src[j * stride + i * bpp];
-                                sum += val;
-                                sumSq += val * val;
+                                int xx = x + i;
+                                if (xx < 0 || xx >= width) continue;
+
+                                byte* p = src + yy * stride + xx * bpp;
+                                byte grayVal = p[0];
+
+                                sum += grayVal;
+                                sumSq += grayVal * grayVal;
                                 count++;
                             }
                         }
 
                         double mean = sum / count;
-                        double std = Math.Sqrt((sumSq - sum * mean) / count);
+                        double variance = (sumSq / count) - (mean * mean);
+                        double std = Math.Sqrt(Math.Max(variance, 0));
 
                         meanMap[x, y] = mean;
                         stdMap[x, y] = std;
@@ -482,25 +520,34 @@ namespace scoi_3
                     }
                 }
 
-                // Второй проход: применение порогового значения по методу Вульфа
+                // Второй проход — применяем порог
                 for (int y = 0; y < height; y++)
                 {
                     for (int x = 0; x < width; x++)
                     {
-                        double threshold = (1 - k) * meanMap[x, y] + k * (globalMin + (stdMap[x, y] / globalMaxStd) * (meanMap[x, y] - globalMin));
-                        byte pixel = src[y * stride + x * bpp];
+                        double mean = meanMap[x, y];
+                        double std = stdMap[x, y];
+
+                        double threshold = (1 - k) * mean + k * (globalMin + (std / globalMaxStd) * (mean - globalMin));
+
+                        byte* cur = src + y * stride + x * bpp;
+                        byte pixel = cur[0];
+
                         byte bin = (pixel < threshold) ? (byte)0 : (byte)255;
-                        dst[y * stride + x * bpp + 0] = bin;
-                        dst[y * stride + x * bpp + 1] = bin;
-                        dst[y * stride + x * bpp + 2] = bin;
+
+                        byte* outPixel = dst + y * stride + x * bpp;
+                        outPixel[0] = bin;
+                        outPixel[1] = bin;
+                        outPixel[2] = bin;
                     }
                 }
             }
 
-            gray.UnlockBits(data);
-            result.UnlockBits(resultData);
+            gray.UnlockBits(srcData);
+            result.UnlockBits(dstData);
             return result;
         }
+
 
         private Bitmap BinarizeBradley(Bitmap gray, int windowSize, double k)
         {
