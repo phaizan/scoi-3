@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace scoi_3
@@ -78,16 +80,16 @@ namespace scoi_3
 
             // PictureBox для оригинального изображения
             pictureBoxOriginal = new PictureBox();
-            pictureBoxOriginal.Location = new Point(20, 120);
-            pictureBoxOriginal.Size = new Size(600, 650);
+            pictureBoxOriginal.Location = new Point(20, 130);
+            pictureBoxOriginal.Size = new Size(600, 600);
             pictureBoxOriginal.BorderStyle = BorderStyle.FixedSingle;
             pictureBoxOriginal.SizeMode = PictureBoxSizeMode.Zoom;
             this.Controls.Add(pictureBoxOriginal);
 
             // PictureBox для результата бинаризации
             pictureBoxResult = new PictureBox();
-            pictureBoxResult.Location = new Point(650, 120);
-            pictureBoxResult.Size = new Size(720, 650);
+            pictureBoxResult.Location = new Point(650, 130);
+            pictureBoxResult.Size = new Size(600, 600);
             pictureBoxResult.BorderStyle = BorderStyle.FixedSingle;
             pictureBoxResult.SizeMode = PictureBoxSizeMode.Zoom;
             this.Controls.Add(pictureBoxResult);
@@ -115,9 +117,9 @@ namespace scoi_3
             {
                 "Гаврилов" => BinarizeGavrilov(gray),
                 "Отсу" => BinarizeOtsu(gray),
-                "Ниблек" => BinarizeNiblack(gray, 15, -0.2),
-                "Саувола" => BinarizeSauvola(gray, 15, 0.5),
-                "Уолф" => BinarizeWolf(gray, 15, 0.5),
+                "Ниблек" => BinarizeNiblack(gray, 15, kValue),        //-0.2  
+                "Саувола" => BinarizeSauvola(gray, 15, 0.5),        //0.5
+                "Уолф" => BinarizeWolf(gray, 15, kValue),          //0.5
                 "Бредли-Рот" => BinarizeBradley(gray, 15, kValue),
                 _ => gray
             };
@@ -150,38 +152,102 @@ namespace scoi_3
             return gray;
         }
 
-        private Bitmap BinarizeGavrilov(Bitmap gray)
+        public static Bitmap BinarizeGavrilov(Bitmap source)
         {
-            int width = gray.Width;
-            int height = gray.Height;
-            Bitmap result = new Bitmap(width, height);
-            double sum = 0;
+            BitmapData data = source.LockBits(
+                new Rectangle(0, 0, source.Width, source.Height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb
+            );
 
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                    sum += gray.GetPixel(x, y).R;
+            long total = 0;
+            int bytes = Math.Abs(data.Stride) * data.Height;
+            byte[] buffer = new byte[bytes];
+            Marshal.Copy(data.Scan0, buffer, 0, bytes);
+            source.UnlockBits(data);
 
-            double t = sum / (width * height);
-
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
+            // Параллельное вычисление суммы
+            Parallel.For(0, data.Height, y =>
+            {
+                int row = y * data.Stride;
+                for (int x = 0; x < data.Width; x++)
                 {
-                    int pixel = gray.GetPixel(x, y).R;
-                    result.SetPixel(x, y, pixel > t ? Color.White : Color.Black);
+                    int pos = row + x * 3;
+                    Interlocked.Add(ref total, buffer[pos + 2]); // R-компонент
                 }
+            });
 
+            byte threshold = (byte)(total / (source.Width * source.Height));
+
+            Bitmap result = new Bitmap(source.Width, source.Height);
+            BitmapData resultData = result.LockBits(
+                new Rectangle(0, 0, result.Width, result.Height),
+                ImageLockMode.WriteOnly,
+                PixelFormat.Format24bppRgb
+            );
+
+            unsafe
+            {
+                byte* ptr = (byte*)resultData.Scan0;
+                int stride = resultData.Stride;
+
+                Parallel.For(0, data.Height, y =>
+                {
+                    byte* row = ptr + y * stride;
+                    int srcRow = y * data.Stride;
+
+                    for (int x = 0; x < data.Width; x++)
+                    {
+                        int srcPos = srcRow + x * 3;
+                        int dstPos = x * 3;
+                        byte value = buffer[srcPos + 2] > threshold ? (byte)255 : (byte)0;
+
+                        row[dstPos] = value;     // B
+                        row[dstPos + 1] = value; // G
+                        row[dstPos + 2] = value; // R
+                    }
+                });
+            }
+
+            result.UnlockBits(resultData);
             return result;
         }
 
-        private Bitmap BinarizeOtsu(Bitmap gray)
+        private Bitmap BinarizeOtsu(Bitmap source)
         {
-            int[] hist = new int[256];
-            int width = gray.Width;
-            int height = gray.Height;
+            BitmapData data = source.LockBits(
+        new Rectangle(0, 0, source.Width, source.Height),
+        ImageLockMode.ReadOnly,
+        PixelFormat.Format24bppRgb
+            );
 
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                    hist[gray.GetPixel(x, y).R]++;
+            int[] hist = new int[256];
+            int bytes = Math.Abs(data.Stride) * data.Height;
+            byte[] buffer = new byte[bytes];
+            Marshal.Copy(data.Scan0, buffer, 0, bytes);
+            source.UnlockBits(data);
+
+            // Параллельное построение гистограммы
+            Parallel.For(0, data.Height, y =>
+            {
+                int row = y * data.Stride;
+                int[] localHist = new int[256];
+
+                for (int x = 0; x < data.Width; x++)
+                {
+                    int pos = row + x * 3;
+                    byte r = buffer[pos + 2];
+                    localHist[r]++;
+                }
+
+                lock (hist)
+                {
+                    for (int i = 0; i < 256; i++)
+                        hist[i] += localHist[i];
+                }
+            });
+            int width = source.Width;
+            int height = source.Height;
 
             int total = width * height;
             float sum = 0;
@@ -211,14 +277,37 @@ namespace scoi_3
                 }
             }
 
-            Bitmap result = new Bitmap(width, height);
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    int pixel = gray.GetPixel(x, y).R;
-                    result.SetPixel(x, y, pixel > threshold ? Color.White : Color.Black);
-                }
+            Bitmap result = new Bitmap(source.Width, source.Height);
+            BitmapData resultData = result.LockBits(
+                new Rectangle(0, 0, result.Width, result.Height),
+                ImageLockMode.WriteOnly,
+                PixelFormat.Format24bppRgb
+            );
 
+            unsafe
+            {
+                byte* ptr = (byte*)resultData.Scan0;
+                int stride = resultData.Stride;
+
+                Parallel.For(0, data.Height, y =>
+                {
+                    byte* row = ptr + y * stride;
+                    int srcRow = y * data.Stride;
+
+                    for (int x = 0; x < data.Width; x++)
+                    {
+                        int srcPos = srcRow + x * 3;
+                        int dstPos = x * 3;
+                        byte value = buffer[srcPos + 2] > threshold ? (byte)255 : (byte)0;
+
+                        row[dstPos] = value;
+                        row[dstPos + 1] = value;
+                        row[dstPos + 2] = value;
+                    }
+                });
+            }
+
+            result.UnlockBits(resultData);
             return result;
         }
 
@@ -468,7 +557,13 @@ namespace scoi_3
 
         private void InitializeComponent()
         {
-
+            SuspendLayout();
+            // 
+            // Form1
+            // 
+            ClientSize = new Size(1261, 684);
+            Name = "Form1";
+            ResumeLayout(false);
         }
     }
 }
