@@ -13,42 +13,34 @@ namespace scoi_3
         Label labelT;
         NumericUpDown numericWindowSize;
         Label labelWindowSize;
-        Panel topPanel;
 
         public Form1()
         {
             // Настройка основной формы
             this.Text = "Бинаризация изображений";
-            this.ClientSize = new Size(1400, 800);
+            this.ClientSize = new Size(1300, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.Font = new Font("Segoe UI", 12);
-
-            // Создаем верхнюю панель для управления
-            topPanel = new Panel();
-            topPanel.Dock = DockStyle.Top;
-            topPanel.Height = 150;
-            topPanel.BackColor = Color.LightGray;
-            this.Controls.Add(topPanel);
+            this.Font = new Font("Arial", 12);
 
             // Кнопка "Загрузить изображение"
             btnLoad = new Button();
             btnLoad.Text = "Загрузить";
-            btnLoad.Size = new Size(300, 70);
+            btnLoad.Size = new Size(300, 120);
             btnLoad.Location = new Point(20, 30);
             btnLoad.Click += btnLoad_Click;
-            topPanel.Controls.Add(btnLoad);
+            this.Controls.Add(btnLoad);
 
             // Кнопка "Бинаризовать"
             btnBinarize = new Button();
             btnBinarize.Text = "Бинаризовать";
-            btnBinarize.Size = new Size(300, 70);
+            btnBinarize.Size = new Size(300, 120);
             btnBinarize.Location = new Point(340, 30);
             btnBinarize.Click += btnBinarize_Click;
-            topPanel.Controls.Add(btnBinarize);
+            this.Controls.Add(btnBinarize);
 
             // ComboBox для выбора метода
             comboBoxMethod = new ComboBox();
-            comboBoxMethod.Location = new Point(660, 30);
+            comboBoxMethod.Location = new Point(660, 70);
             comboBoxMethod.Size = new Size(250, 100);
             comboBoxMethod.DropDownStyle = ComboBoxStyle.DropDownList;
             comboBoxMethod.Items.AddRange(new object[] {
@@ -60,15 +52,15 @@ namespace scoi_3
                 "Бредли-Рот"
             });
             comboBoxMethod.SelectedIndex = 0;
-            topPanel.Controls.Add(comboBoxMethod);
+            this.Controls.Add(comboBoxMethod);
 
             // Метка и NumericUpDown для параметра windowSize
             labelWindowSize = new Label();
-            labelWindowSize.Text = "Параметр windowSize:";
-            labelWindowSize.Location = new Point(910, 20);
-            labelWindowSize.Size = new Size(200, 70);
+            labelWindowSize.Text = "Размер окна:";
+            labelWindowSize.Location = new Point(830, 25);
+            labelWindowSize.Size = new Size(300, 50);
             labelWindowSize.TextAlign = ContentAlignment.MiddleRight;
-            topPanel.Controls.Add(labelWindowSize);
+            this.Controls.Add(labelWindowSize);
 
             numericWindowSize = new NumericUpDown();
             numericWindowSize.Location = new Point(1130, 30);
@@ -78,15 +70,15 @@ namespace scoi_3
             numericWindowSize.Maximum = 30;
             numericWindowSize.Value = 15M;
             numericWindowSize.Size = new Size(100, 40);
-            topPanel.Controls.Add(numericWindowSize);
+            this.Controls.Add(numericWindowSize);
 
             // Метка и NumericUpDown для параметра k
             labelT = new Label();
-            labelT.Text = "Параметр k:";
-            labelT.Location = new Point(910, 100);
-            labelT.Size = new Size(200, 70);
-            labelT.TextAlign = ContentAlignment.MiddleRight;
-            topPanel.Controls.Add(labelT);
+            labelT.Text = "k:";
+            labelT.Location = new Point(1090, 90);
+            labelT.Size = new Size(40, 70);
+            labelT.TextAlign = ContentAlignment.MiddleLeft;
+            this.Controls.Add(labelT);
 
             numericT = new NumericUpDown();
             numericT.Location = new Point(1130, 100);
@@ -96,11 +88,11 @@ namespace scoi_3
             numericT.Maximum = 1;
             numericT.Value = 0.15M;
             numericT.Size = new Size(100, 40);
-            topPanel.Controls.Add(numericT);
+            this.Controls.Add(numericT);
             
             // PictureBox для оригинального изображения
             pictureBoxOriginal = new PictureBox();
-            pictureBoxOriginal.Location = new Point(20, 130);
+            pictureBoxOriginal.Location = new Point(20, 180);
             pictureBoxOriginal.Size = new Size(600, 600);
             pictureBoxOriginal.BorderStyle = BorderStyle.FixedSingle;
             pictureBoxOriginal.SizeMode = PictureBoxSizeMode.Zoom;
@@ -108,7 +100,7 @@ namespace scoi_3
 
             // PictureBox для результата бинаризации
             pictureBoxResult = new PictureBox();
-            pictureBoxResult.Location = new Point(650, 130);
+            pictureBoxResult.Location = new Point(650, 180);
             pictureBoxResult.Size = new Size(600, 600);
             pictureBoxResult.BorderStyle = BorderStyle.FixedSingle;
             pictureBoxResult.SizeMode = PictureBoxSizeMode.Zoom;
